@@ -59,6 +59,68 @@ test "Comptime only interface" {
     try expectEqual(@as(u8, 42), iface.call("foo", .{42}));
 }
 
+test "Owning with Wrappers" {
+    std.debug.print("\n", .{});
+
+    // Interface class defining a function send, and an optional deinit function.
+    const Messenger = struct {
+        const Self = @This();
+
+        const IFace = Interface(struct {
+            deinit: ?fn(*SelfType) void,
+            send: fn(*SelfType, msg: []const u8) void,
+        }, interface.Storage.Owning);
+
+        iface: IFace,
+
+        // Wrap the interface's init, since the interface is owning it requires an allocator argument
+        // to allocate space for the implementing struct.
+        pub fn init(impl_ptr: anytype, allocator: *std.mem.Allocator) !Self {
+            return Self{ .iface = try IFace.init(impl_ptr, allocator) };
+        }
+        
+        // Wrap interface's deinit, and also ensure to call the proper function in the implementation if it has one
+        pub fn deinit(self: *Self) void {
+            // Call implementer's deinit if it has one
+            _ = self.iface.call("deinit", .{});
+
+            // Deinitialize interface, which includes deallocating the implementing struct/
+            self.iface.deinit();
+        }
+
+        // Wrap the send function call
+        pub fn send(self: *Self, buf: []const u8) void {
+            return self.iface.call("send", .{buf});
+        }
+    };
+
+    // Class implementing the messenger interface
+    const MyMessenger = struct {
+        const Self = @This();
+
+        id : u32,
+
+        pub fn init(id: u32) Self {
+            return Self { .id = id };
+        }
+
+        pub fn deinit(self: *Self) void {
+            std.debug.print("    {d}: Deinitializing implementation...\n", .{self.id});
+        }
+
+        pub fn send(self: *Self, msg: []const u8) void {
+            std.debug.print("    {d}: {s}\n", .{self.id, msg});
+        }
+    };
+
+    // Create implementation and wrap in interface
+    const my_messenger = comptime MyMessenger.init(42);
+    var messenger = try Messenger.init(my_messenger, std.testing.allocator);
+    defer messenger.deinit();
+
+    messenger.send("Hello!");
+}
+
 test "Owning interface with optional function and a non-method function" {
     const OwningOptionalFuncTest = struct {
         fn run() !void {
