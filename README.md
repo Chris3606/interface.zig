@@ -1,4 +1,6 @@
 # Zig Interfaces
+Note: Maintained version at: https://github.com/MasterQ32/interface.zig.  Current interfaces.zig is copied from there on 04/18/2022.  Examples.Zig only has one additional example, "owning with wrappers"; otherwise is copy.
+
 Easy solution for all your zig dynamic dispatch needs!
 
 ## Features

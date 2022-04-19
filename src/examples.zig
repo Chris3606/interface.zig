@@ -67,18 +67,18 @@ test "Owning with Wrappers" {
         const Self = @This();
 
         const IFace = Interface(struct {
-            deinit: ?fn(*SelfType) void,
-            send: fn(*SelfType, msg: []const u8) void,
+            deinit: ?fn (*SelfType) void,
+            send: fn (*SelfType, msg: []const u8) void,
         }, interface.Storage.Owning);
 
         iface: IFace,
 
         // Wrap the interface's init, since the interface is owning it requires an allocator argument
         // to allocate space for the implementing struct.
-        pub fn init(impl_ptr: anytype, allocator: *std.mem.Allocator) !Self {
+        pub fn init(impl_ptr: anytype, allocator: std.mem.Allocator) !Self {
             return Self{ .iface = try IFace.init(impl_ptr, allocator) };
         }
-        
+
         // Wrap interface's deinit, and also ensure to call the proper function in the implementation if it has one
         pub fn deinit(self: *Self) void {
             // Call implementer's deinit if it has one
@@ -98,10 +98,10 @@ test "Owning with Wrappers" {
     const MyMessenger = struct {
         const Self = @This();
 
-        id : u32,
+        id: u32,
 
         pub fn init(id: u32) Self {
-            return Self { .id = id };
+            return Self{ .id = id };
         }
 
         pub fn deinit(self: *Self) void {
@@ -109,7 +109,7 @@ test "Owning with Wrappers" {
         }
 
         pub fn send(self: *Self, msg: []const u8) void {
-            std.debug.print("    {d}: {s}\n", .{self.id, msg});
+            std.debug.print("    {d}: {s}\n", .{ self.id, msg });
         }
     };
 
@@ -206,7 +206,6 @@ test "Interface with virtual async function implemented by a blocking function" 
 
         pub fn readBytes(self: Self, outBuf: []u8) void {
             _ = self;
-
             for (outBuf) |*c| {
                 c.* = 3;
             }
