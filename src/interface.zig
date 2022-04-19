@@ -96,12 +96,12 @@ pub const Storage = struct {
     };
 
     pub const Owning = struct {
-        allocator: *mem.Allocator,
+        allocator: mem.Allocator,
         mem: []u8,
 
         fn makeInit(comptime TInterface: type) type {
             return struct {
-                fn init(obj: anytype, allocator: *std.mem.Allocator) !TInterface {
+                fn init(obj: anytype, allocator: std.mem.Allocator) !TInterface {
                     const AllocT = @TypeOf(obj);
 
                     var ptr = try allocator.create(AllocT);
@@ -368,7 +368,10 @@ fn checkVtableType(comptime VTableT: type) void {
     }
 
     for (std.meta.declarations(VTableT)) |decl| {
-        switch (decl.data) {
+        if (!decl.is_pub) continue;
+
+        const data = @field(VTableT, decl.name);
+        switch (@typeInfo(@TypeOf(data))) {
             .Fn => @compileError("VTable type defines method '" ++ decl.name ++ "'."),
             .Type, .Var => {},
         }
