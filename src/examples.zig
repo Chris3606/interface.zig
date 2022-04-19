@@ -164,7 +164,7 @@ test "Owning interface with optional function and a non-method function" {
 
 test "Interface with virtual async function implemented by an async function" {
     const AsyncIFace = Interface(struct {
-        const async_call_stack_size = 1024;
+        pub const async_call_stack_size = 1024;
 
         foo: fn (*SelfType) callconv(.Async) void,
     }, interface.Storage.NonOwning);
