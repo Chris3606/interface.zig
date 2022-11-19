@@ -125,7 +125,10 @@ pub const Storage = struct {
         }
 
         pub fn deinit(self: Owning) void {
-            self.allocator.destroy(&self.mem[0]);
+            // TODO: Ensure this works, since shrinkBytes no longer does, and destroy will leak
+            self.allocator.free(self.mem);
+            // const result = self.allocator.shrinkBytes(self.mem, 0, 0, 0, 0);
+            // assert(result == 0);
         }
     };
 
