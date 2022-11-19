@@ -3,15 +3,18 @@ const Interface = interface.Interface;
 const SelfType = interface.SelfType;
 
 const std = @import("std");
+const builtin = @import("builtin");
 const mem = std.mem;
 const expectEqual = std.testing.expectEqual;
 const assert = std.debug.assert;
+
+const FnPtr = @import("./meta.zig").FnPtr;
 
 test "Simple NonOwning interface" {
     const NonOwningTest = struct {
         fn run() !void {
             const Fooer = Interface(struct {
-                foo: fn (*SelfType) usize,
+                foo: FnPtr(fn (*SelfType) usize),
             }, interface.Storage.NonOwning);
 
             const TestFooer = struct {
@@ -40,23 +43,27 @@ test "Simple NonOwning interface" {
 }
 
 test "Comptime only interface" {
-    // return error.SkipZigTest;
-    const TestIFace = Interface(struct {
-        foo: fn (*SelfType, u8) u8,
-    }, interface.Storage.Comptime);
+    // TODO: No idea how to get this to work in self-hosted
+    if (builtin.zig_backend != .stage1) {
+        return error.SkipZigTest;
+    } else {
+        const TestIFace = Interface(struct {
+            foo: FnPtr(fn (*SelfType, u8) u8),
+        }, interface.Storage.Comptime);
 
-    const TestType = struct {
-        const Self = @This();
+        const TestType = struct {
+            const Self = @This();
 
-        state: u8,
+            state: u8,
 
-        pub fn foo(self: Self, a: u8) u8 {
-            return self.state + a;
-        }
-    };
+            pub fn foo(self: Self, a: u8) u8 {
+                return self.state + a;
+            }
+        };
 
-    comptime var iface = try TestIFace.init(TestType{ .state = 0 });
-    try expectEqual(@as(u8, 42), iface.call("foo", .{42}));
+        comptime var iface = try TestIFace.init(TestType{ .state = 0 });
+        try expectEqual(@as(u8, 42), iface.call("foo", .{42}));
+    }
 }
 
 test "Owning with Wrappers" {
@@ -67,8 +74,8 @@ test "Owning with Wrappers" {
         const Self = @This();
 
         const IFace = Interface(struct {
-            deinit: ?fn (*SelfType) void,
-            send: fn (*SelfType, msg: []const u8) void,
+            deinit: ?FnPtr(fn (*SelfType) void),
+            send: FnPtr(fn (*SelfType, msg: []const u8) void),
         }, interface.Storage.Owning);
 
         iface: IFace,
@@ -125,9 +132,9 @@ test "Owning interface with optional function and a non-method function" {
     const OwningOptionalFuncTest = struct {
         fn run() !void {
             const TestOwningIface = Interface(struct {
-                someFn: ?fn (*const SelfType, usize, usize) usize,
-                otherFn: fn (*SelfType, usize) anyerror!void,
-                thirdFn: fn (usize) usize,
+                someFn: ?FnPtr(fn (*const SelfType, usize, usize) usize),
+                otherFn: FnPtr(fn (*SelfType, usize) anyerror!void),
+                thirdFn: FnPtr(fn (usize) usize),
             }, interface.Storage.Owning);
 
             const TestStruct = struct {
@@ -163,59 +170,69 @@ test "Owning interface with optional function and a non-method function" {
 }
 
 test "Interface with virtual async function implemented by an async function" {
-    const AsyncIFace = Interface(struct {
-        pub const async_call_stack_size = 1024;
+    // Async isn't implemented in self-hosted
+    if (builtin.zig_backend != .stage1) {
+        return error.SkipZigTest;
+    } else {
+        const AsyncIFace = Interface(struct {
+            pub const async_call_stack_size = 1024;
 
-        foo: fn (*SelfType) callconv(.Async) void,
-    }, interface.Storage.NonOwning);
+            foo: FnPtr(fn (*SelfType) callconv(.Async) void),
+        }, interface.Storage.NonOwning);
 
-    const Impl = struct {
-        const Self = @This();
+        const Impl = struct {
+            const Self = @This();
 
-        state: usize,
-        frame: anyframe = undefined,
+            state: usize,
+            frame: anyframe = undefined,
 
-        pub fn foo(self: *Self) void {
-            suspend {
-                self.frame = @frame();
+            pub fn foo(self: *Self) void {
+                suspend {
+                    self.frame = @frame();
+                }
+                self.state += 1;
+                suspend {}
+                self.state += 1;
             }
-            self.state += 1;
-            suspend {}
-            self.state += 1;
-        }
-    };
+        };
 
-    var i = Impl{ .state = 0 };
-    var instance = try AsyncIFace.init(&i);
-    _ = async instance.call("foo", .{});
+        var i = Impl{ .state = 0 };
+        var instance = try AsyncIFace.init(&i);
+        _ = async instance.call("foo", .{});
 
-    try expectEqual(@as(usize, 0), i.state);
-    resume i.frame;
-    try expectEqual(@as(usize, 1), i.state);
-    resume i.frame;
-    try expectEqual(@as(usize, 2), i.state);
+        try expectEqual(@as(usize, 0), i.state);
+        resume i.frame;
+        try expectEqual(@as(usize, 1), i.state);
+        resume i.frame;
+        try expectEqual(@as(usize, 2), i.state);
+    }
 }
 
 test "Interface with virtual async function implemented by a blocking function" {
-    const AsyncIFace = Interface(struct {
-        readBytes: fn (*SelfType, []u8) callconv(.Async) anyerror!void,
-    }, interface.Storage.Inline(8));
+    // Async isn't implemented in self-hosted
+    if (builtin.zig_backend != .stage1) {
+        return error.SkipZigTest;
+    } else {
+        const AsyncIFace = Interface(struct {
+            readBytes: FnPtr(fn (*SelfType, []u8) callconv(.Async) anyerror!void),
+        }, interface.Storage.Inline(8));
 
-    const Impl = struct {
-        const Self = @This();
+        const Impl = struct {
+            const Self = @This();
 
-        pub fn readBytes(self: Self, outBuf: []u8) void {
-            _ = self;
-            for (outBuf) |*c| {
-                c.* = 3;
+            pub fn readBytes(self: Self, outBuf: []u8) void {
+                _ = self;
+                for (outBuf) |*c| {
+                    c.* = 3;
+                }
             }
-        }
-    };
+        };
 
-    var instance = try AsyncIFace.init(Impl{});
+        var instance = try AsyncIFace.init(Impl{});
 
-    var buf: [256]u8 = undefined;
-    try await async instance.call("readBytes", .{buf[0..]});
+        var buf: [256]u8 = undefined;
+        try await async instance.call("readBytes", .{buf[0..]});
 
-    try expectEqual([_]u8{3} ** 256, buf);
+        try expectEqual([_]u8{3} ** 256, buf);
+    }
 }
