@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const mem = std.mem;
 const trait = std.meta.trait;
 
@@ -346,6 +347,7 @@ fn makeVTable(comptime VTableT: type, comptime ImplT: type) VTableT {
         if (is_optional) {
             fn_type = std.meta.Child(fn_type);
         }
+        fn_type = FnFieldType(fn_type);
 
         const candidate = comptime getFunctionFromImpl(field.name, fn_type, ImplT);
         if (candidate == null and !is_optional) {
@@ -358,6 +360,11 @@ fn makeVTable(comptime VTableT: type, comptime ImplT: type) VTableT {
     }
 
     return vtable;
+}
+
+/// Given a function pointer field's type, returns the proper type to describe the actual function it points to.
+fn FnFieldType(comptime FieldType: type) type {
+    return if (builtin.zig_backend == .stage1) FieldType else std.meta.Child(FieldType);
 }
 
 fn checkVtableType(comptime VTableT: type) void {
@@ -373,11 +380,14 @@ fn checkVtableType(comptime VTableT: type) void {
     }
 
     for (std.meta.fields(VTableT)) |field| {
-        var field_type = field.field_type;
+        const field_type = blk: {
+            var field_type = field.field_type;
 
-        if (trait.is(.Optional)(field_type)) {
-            field_type = std.meta.Child(field_type);
-        }
+            if (trait.is(.Optional)(field_type)) {
+                field_type = std.meta.Child(field_type);
+            }
+            break :blk FnFieldType(field_type);
+        };
 
         if (!trait.is(.Fn)(field_type)) {
             @compileError("VTable type defines non function field '" ++ field.name ++ "'.");
@@ -400,7 +410,7 @@ fn vtableHasMethod(comptime VTableT: type, comptime name: []const u8, is_optiona
     for (std.meta.fields(VTableT)) |field| {
         if (std.mem.eql(u8, name, field.name)) {
             is_optional.* = trait.is(.Optional)(field.field_type);
-            const fn_typeinfo = @typeInfo(if (is_optional.*) std.meta.Child(field.field_type) else field.field_type).Fn;
+            const fn_typeinfo = @typeInfo(if (is_optional.*) std.meta.Child(FnFieldType(field.field_type)) else FnFieldType(field.field_type)).Fn;
             is_async.* = fn_typeinfo.calling_convention == .Async;
             is_method.* = fn_typeinfo.args.len > 0 and blk: {
                 const first_arg_type = fn_typeinfo.args[0].arg_type.?;
@@ -419,9 +429,9 @@ fn VTableReturnType(comptime VTableT: type, comptime name: []const u8) type {
             const is_optional = trait.is(.Optional)(field.field_type);
 
             var fn_ret_type = (if (is_optional)
-                @typeInfo(std.meta.Child(field.field_type)).Fn.return_type
+                @typeInfo(std.meta.Child(FnFieldType(field.field_type))).Fn.return_type
             else
-                @typeInfo(field.field_type).Fn.return_type) orelse noreturn;
+                @typeInfo(FnFieldType(field.field_type)).Fn.return_type) orelse noreturn;
 
             if (is_optional) {
                 return ?fn_ret_type;
